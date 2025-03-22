@@ -120,8 +120,7 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0;
 scene.add(ground);
 
-// Clearer Sky
-scene.background = new THREE.Color(0x87ceeb); // Light blue sky
+scene.background = new THREE.Color(0x87ceeb);
 
 // Obstacles with Collision Boxes
 const obstacles = [];
@@ -148,21 +147,51 @@ for (let i = 0; i < 10; i++) {
     scene.add(obstacle);
 }
 
-// NPCs with Shooting
+// Health Bar Creation
+function createHealthBar() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    const texture = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+    sprite.scale.set(1, 0.25, 1);
+    return { sprite, canvas, ctx };
+}
+
+function updateHealthBar(npc) {
+    const { ctx, canvas } = npc.healthBar;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'red';
+    ctx.fillRect(0, 0, (npc.health / 10) * canvas.width, canvas.height);
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    npc.healthBar.sprite.material.map.needsUpdate = true;
+}
+
+// NPCs with Health Bars and Shooting
 const npcs = [];
-for (let i = 0; i < 10; i++) { // Increased to 10 enemies
+for (let i = 0; i < 10; i++) {
     const rank = rankOrder[Math.floor(Math.random() * rankOrder.length)];
     const npc = pieceCreators[rank]();
     npc.position.set((Math.random() - 0.5) * 80, 0, (Math.random() - 0.5) * 80);
     npc.health = 10;
     npc.velocity = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
     npc.lastShot = 0;
-    npc.fireRate = 1; // Enemies shoot once per second
+    npc.fireRate = 1;
+
+    // Add Health Bar
+    npc.healthBar = createHealthBar();
+    npc.healthBar.sprite.position.set(0, 2, 0); // Above NPC
+    npc.add(npc.healthBar.sprite);
+    updateHealthBar(npc);
+
     npcs.push(npc);
     scene.add(npc);
 }
 
-// Projectiles (Player and Enemy)
+// Projectiles (Player and Enemy) with Explosions
 const projectiles = [];
 function shoot(shooter, isEnemy = false) {
     const now = performance.now() / 1000;
@@ -179,11 +208,30 @@ function shoot(shooter, isEnemy = false) {
     projectile.velocity = direction.multiplyScalar(50);
     projectile.damage = isEnemy ? 2 : (shooter.rank === 'king' ? 10 : shooter.damage());
     projectile.isEnemy = isEnemy;
+    projectile.isBazooka = !isEnemy && shooter.projectile === 'bazooka';
     projectiles.push(projectile);
     scene.add(projectile);
 }
 
-// Movement with Correct Controls
+function createExplosion(position) {
+    const explosionGeo = new THREE.SphereGeometry(2, 32, 32);
+    const explosionMat = new THREE.MeshBasicMaterial({ color: 0xff4500, transparent: true, opacity: 0.8 });
+    const explosion = new THREE.Mesh(explosionGeo, explosionMat);
+    explosion.position.copy(position);
+    scene.add(explosion);
+
+    let fade = 1;
+    const fadeOut = setInterval(() => {
+        fade -= 0.1;
+        explosion.material.opacity = fade;
+        if (fade <= 0) {
+            clearInterval(fadeOut);
+            scene.remove(explosion);
+        }
+    }, 50);
+}
+
+// Movement
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -217,8 +265,8 @@ function animate() {
     requestAnimationFrame(animate);
 
     // Player Movement
-    direction.z = Number(moveBackward) - Number(moveForward); // W forward, S backward
-    direction.x = Number(moveRight) - Number(moveLeft); // A left, D right
+    direction.z = Number(moveBackward) - Number(moveForward);
+    direction.x = Number(moveRight) - Number(moveLeft);
     direction.normalize();
     velocity.x = direction.x * speed;
     velocity.z = direction.z * speed;
@@ -253,12 +301,26 @@ function animate() {
                 player.health -= proj.damage;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
-                if (player.health <= 0) console.log("Player dead"); // Placeholder for game over
+                if (player.health <= 0) console.log("Player dead");
             }
         } else {
             npcs.forEach((npc, j) => {
                 if (proj.position.distanceTo(npc.position) < 1) {
+                    if (proj.isBazooka) {
+                        createExplosion(proj.position);
+                        npcs.forEach((nearbyNpc, k) => {
+                            if (nearbyNpc !== npc && proj.position.distanceTo(nearbyNpc.position) < 5) {
+                                nearbyNpc.health -= proj.damage / 2; // Splash damage
+                                updateHealthBar(nearbyNpc);
+                                if (nearbyNpc.health <= 0) {
+                                    scene.remove(nearbyNpc);
+                                    npcs.splice(k, 1);
+                                }
+                            }
+                        });
+                    }
                     npc.health -= proj.damage;
+                    updateHealthBar(npc);
                     scene.remove(proj);
                     projectiles.splice(i, 1);
                     if (npc.health <= 0) {
@@ -277,7 +339,8 @@ function animate() {
         if (Math.abs(npc.position.x) > 45 || Math.abs(npc.position.z) > 45) {
             npc.velocity.multiplyScalar(-1);
         }
-        shoot(npc, true); // Enemies shoot at player
+        shoot(npc, true);
+        npc.healthBar.sprite.position.copy(npc.position.clone().add(new THREE.Vector3(0, 2, 0))); // Update health bar position
     });
 
     // Update UI
