@@ -124,7 +124,7 @@ scene.background = new THREE.Color(0x87ceeb);
 
 // Obstacles with Collision Boxes
 const obstacles = [];
-for (let i = 0; i < 20; i++) { // Increased to 20
+for (let i = 0; i < 20; i++) {
     const type = Math.floor(Math.random() * 3);
     let obstacle, boundingBox, heightOffset = 1;
     if (type === 0) {
@@ -192,7 +192,7 @@ function updateHealthBar(npc) {
 // NPCs with Health Bars and Shooting
 const npcs = [];
 function spawnNPC() {
-    const npc = pieceCreators['pawn'](); // Start as pawn
+    const npc = pieceCreators['pawn']();
     npc.position.set((Math.random() - 0.5) * 80, 0, (Math.random() - 0.5) * 80);
     npc.health = 10;
     npc.velocity = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
@@ -212,9 +212,18 @@ for (let i = 0; i < 10; i++) spawnNPC();
 
 // Projectiles with Explosions
 const projectiles = [];
+const raycaster = new THREE.Raycaster();
 function shoot(shooter, target) {
     const now = performance.now() / 1000;
     if (now - shooter.lastShot < 1 / shooter.fireRate) return;
+
+    // Line-of-Sight Check for NPCs
+    if (shooter !== player && target.position.equals(camera.position)) {
+        raycaster.set(shooter.position.clone().add(new THREE.Vector3(0, 1, 0)), target.position.clone().sub(shooter.position).normalize());
+        const intersects = raycaster.intersectObjects(obstacles.map(o => o.mesh));
+        if (intersects.length > 0 && intersects[0].distance < shooter.position.distanceTo(target.position)) return; // Blocked by obstacle
+    }
+
     shooter.lastShot = now;
 
     const projectileGeo = new THREE.SphereGeometry(shooter.rank && ranks[shooter.rank].projectile === 'bazooka' ? 0.5 : 0.2);
@@ -232,6 +241,7 @@ function shoot(shooter, target) {
     projectile.damage = shooter === player ? (shooter.rank === 'king' ? 10 : shooter.damage()) : 2;
     projectile.isEnemy = shooter !== player;
     projectile.isBazooka = shooter === player && ranks[shooter.rank].projectile === 'bazooka';
+    projectile.startPosition = projectile.position.clone(); // Track starting position for range
     projectiles.push(projectile);
     scene.add(projectile);
 }
@@ -284,8 +294,8 @@ controls.getObject().position.set(0, 1.5, 0);
 
 // NPC Spawning Timer
 setInterval(() => {
-    if (npcs.length < 20) spawnNPC(); // Cap at 20 to avoid overload
-}, 10000); // Every 10 seconds
+    if (npcs.length < 20) spawnNPC();
+}, 10000);
 
 // Update Loop
 function animate() {
@@ -324,7 +334,8 @@ function animate() {
     // Projectile Update
     projectiles.forEach((proj, i) => {
         proj.position.add(proj.velocity.clone().multiplyScalar(1 / 60));
-        if (proj.position.length() > 100 || proj.position.y < 0) { // Floor contact
+        const distanceTraveled = proj.position.distanceTo(proj.startPosition);
+        if (distanceTraveled > 50 || proj.position.y < 0) { // Limited range or floor contact
             if (proj.isBazooka) createExplosion(proj.position);
             scene.remove(proj);
             projectiles.splice(i, 1);
@@ -357,7 +368,7 @@ function animate() {
                         player.health = 10;
                     } else {
                         console.log("Game Over");
-                        player.health = 10; // Reset for now
+                        player.health = 10;
                     }
                 }
             }
