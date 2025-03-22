@@ -8,10 +8,35 @@
         body { margin: 0; overflow: hidden; }
         canvas { display: block; }
         #info { position: absolute; top: 10px; left: 10px; color: white; }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%);
+            pointer-events: none; /* Prevents blocking clicks */
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: white;
+        }
+        #crosshair::before {
+            width: 2px;
+            height: 20px;
+            left: 9px;
+        }
+        #crosshair::after {
+            width: 20px;
+            height: 2px;
+            top: 9px;
+        }
     </style>
 </head>
 <body>
     <div id="info"></div>
+    <div id="crosshair"></div>
     <script type="importmap">
         {
             "imports": {
