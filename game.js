@@ -9,8 +9,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.4)); // Reduced intensity
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Reduced intensity
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
 directionalLight.position.set(5, 10, 5).normalize();
 scene.add(directionalLight);
 
@@ -154,49 +154,53 @@ const pieceCreators = {
 // World Setup
 // Green Floor
 const groundGeo = new THREE.PlaneGeometry(100, 100);
-const groundMat = new THREE.MeshPhongMaterial({ color: 0x00ff00 }); // Green floor
+const groundMat = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0;
 scene.add(ground);
 
-// Blue Sky (Background)
-scene.background = new THREE.Color(0x0000ff); // Simple blue background instead of skybox
+// Blue Sky
+scene.background = new THREE.Color(0x0000ff);
 
-// Obstacles with Collision Boxes
+// Obstacles with Collision Boxes (Fixed radius scoping)
 const obstacles = [];
 for (let i = 0; i < 10; i++) {
     const type = Math.floor(Math.random() * 3);
     let obstacle;
     let boundingBox;
-    if (type === 0) {
+    let heightOffset = 1; // Default offset
+
+    if (type === 0) { // Box
         const size = 2 + Math.random() * 2;
         obstacle = new THREE.Mesh(
             new THREE.BoxGeometry(size, size, size),
             new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
         );
-        boundingBox = new THREE.Box3().setFromObject(obstacle);
-    } else if (type === 1) {
+        heightOffset = size / 2;
+    } else if (type === 1) { // Cylinder
         const radius = 1 + Math.random();
         const height = 2 + Math.random() * 2;
         obstacle = new THREE.Mesh(
             new THREE.CylinderGeometry(radius, radius, height, 32),
             new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
         );
-        boundingBox = new THREE.Box3().setFromObject(obstacle);
-    } else {
+        heightOffset = height / 2;
+    } else { // Sphere
         const radius = 1 + Math.random();
         obstacle = new THREE.Mesh(
             new THREE.SphereGeometry(radius, 32, 32),
             new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
         );
-        boundingBox = new THREE.Box3().setFromObject(obstacle);
+        heightOffset = radius;
     }
+
     obstacle.position.set(
         (Math.random() - 0.5) * 90,
-        obstacle.geometry.parameters.height ? obstacle.geometry.parameters.height / 2 : radius || 1,
+        heightOffset,
         (Math.random() - 0.5) * 90
     );
+    boundingBox = new THREE.Box3().setFromObject(obstacle);
     obstacles.push({ mesh: obstacle, box: boundingBox });
     scene.add(obstacle);
 }
@@ -267,16 +271,16 @@ document.addEventListener('keyup', (event) => {
 
 // Initialize Player
 player.mesh = createPawn();
-player.mesh.position.set(0, 1.5, 0); // Start at center
-controls.getObject().position.set(0, 1.5, 0); // Camera at player height
+player.mesh.position.set(0, 1.5, 0);
+controls.getObject().position.set(0, 1.5, 0);
 
 // Update Loop
 function animate() {
     requestAnimationFrame(animate);
 
     // Player Movement with Collision
-    direction.z = Number(moveBackward) - Number(moveForward); // W forward, S backward
-    direction.x = Number(moveLeft) - Number(moveRight); // A left, D right
+    direction.z = Number(moveBackward) - Number(moveForward);
+    direction.x = Number(moveLeft) - Number(moveRight);
     direction.normalize();
     velocity.x = direction.x * speed;
     velocity.z = direction.z * speed;
