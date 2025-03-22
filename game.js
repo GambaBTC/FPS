@@ -122,7 +122,10 @@ scene.add(ground);
 
 scene.background = new THREE.Color(0x87ceeb);
 
-// Fence
+// Define obstacles array first
+const obstacles = [];
+
+// Fence (Add to obstacles after declaration)
 const fenceHeight = 5;
 const fenceThickness = 1;
 const fenceMaterial = new THREE.MeshPhongMaterial({ color: 0x666666 });
@@ -132,10 +135,10 @@ const fence = [
     new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial), // West
     new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial)  // East
 ];
-fence[0].position.set(0, fenceHeight / 2, -50); // North
-fence[1].position.set(0, fenceHeight / 2, 50);  // South
-fence[2].position.set(-50, fenceHeight / 2, 0); // West
-fence[3].position.set(50, fenceHeight / 2, 0);  // East
+fence[0].position.set(0, fenceHeight / 2, -50);
+fence[1].position.set(0, fenceHeight / 2, 50);
+fence[2].position.set(-50, fenceHeight / 2, 0);
+fence[3].position.set(50, fenceHeight / 2, 0);
 fence.forEach(f => {
     obstacles.push({ mesh: f, box: new THREE.Box3().setFromObject(f) });
     scene.add(f);
@@ -197,7 +200,7 @@ for (let i = 0; i < 10; i++) {
     npc.health = 10;
     npc.velocity = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
     npc.lastShot = 0;
-    npc.fireRate = ranks[rank].fireRate; // Use rank-specific fire rate
+    npc.fireRate = ranks[rank].fireRate;
     npc.rank = rank;
 
     npc.healthBar = createHealthBar();
@@ -221,9 +224,8 @@ function shoot(shooter, target) {
     
     projectile.position.copy(shooter === player ? camera.position : shooter.position.clone().add(new THREE.Vector3(0, 1, 0)));
     const direction = target.position.clone().sub(projectile.position).normalize();
-    // Add inaccuracy for NPCs
     if (shooter !== player) {
-        direction.x += (Math.random() - 0.5) * 0.2; // ±10% inaccuracy
+        direction.x += (Math.random() - 0.5) * 0.2;
         direction.z += (Math.random() - 0.5) * 0.2;
         direction.normalize();
     }
@@ -380,7 +382,7 @@ function animate() {
         }
         const target = Math.random() < 0.5 && npcs.length > 1 ? npcs[Math.floor(Math.random() * npcs.length)] : { position: camera.position };
         if (target !== npc) shoot(npc, target);
-        npc.healthBar.sprite.position.set(0, 2, 0); // Keep health bar relative to NPC
+        npc.healthBar.sprite.position.set(0, 2, 0); // Fixed position relative to NPC
     });
 
     // Update UI
