@@ -122,30 +122,9 @@ scene.add(ground);
 
 scene.background = new THREE.Color(0x87ceeb);
 
-// Define obstacles array first
-const obstacles = [];
-
-// Fence (Add to obstacles after declaration)
-const fenceHeight = 5;
-const fenceThickness = 1;
-const fenceMaterial = new THREE.MeshPhongMaterial({ color: 0x666666 });
-const fence = [
-    new THREE.Mesh(new THREE.BoxGeometry(100 + fenceThickness * 2, fenceHeight, fenceThickness), fenceMaterial), // North
-    new THREE.Mesh(new THREE.BoxGeometry(100 + fenceThickness * 2, fenceHeight, fenceThickness), fenceMaterial), // South
-    new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial), // West
-    new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial)  // East
-];
-fence[0].position.set(0, fenceHeight / 2, -50);
-fence[1].position.set(0, fenceHeight / 2, 50);
-fence[2].position.set(-50, fenceHeight / 2, 0);
-fence[3].position.set(50, fenceHeight / 2, 0);
-fence.forEach(f => {
-    obstacles.push({ mesh: f, box: new THREE.Box3().setFromObject(f) });
-    scene.add(f);
-});
-
 // Obstacles with Collision Boxes
-for (let i = 0; i < 10; i++) {
+const obstacles = [];
+for (let i = 0; i < 20; i++) { // Increased to 20
     const type = Math.floor(Math.random() * 3);
     let obstacle, boundingBox, heightOffset = 1;
     if (type === 0) {
@@ -167,6 +146,25 @@ for (let i = 0; i < 10; i++) {
     obstacles.push({ mesh: obstacle, box: boundingBox });
     scene.add(obstacle);
 }
+
+// Fence
+const fenceHeight = 5;
+const fenceThickness = 1;
+const fenceMaterial = new THREE.MeshPhongMaterial({ color: 0x666666 });
+const fence = [
+    new THREE.Mesh(new THREE.BoxGeometry(100 + fenceThickness * 2, fenceHeight, fenceThickness), fenceMaterial), // North
+    new THREE.Mesh(new THREE.BoxGeometry(100 + fenceThickness * 2, fenceHeight, fenceThickness), fenceMaterial), // South
+    new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial), // West
+    new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial)  // East
+];
+fence[0].position.set(0, fenceHeight / 2, -50);
+fence[1].position.set(0, fenceHeight / 2, 50);
+fence[2].position.set(-50, fenceHeight / 2, 0);
+fence[3].position.set(50, fenceHeight / 2, 0);
+fence.forEach(f => {
+    obstacles.push({ mesh: f, box: new THREE.Box3().setFromObject(f) });
+    scene.add(f);
+});
 
 // Health Bar Creation
 function createHealthBar() {
@@ -193,15 +191,14 @@ function updateHealthBar(npc) {
 
 // NPCs with Health Bars and Shooting
 const npcs = [];
-for (let i = 0; i < 10; i++) {
-    const rank = rankOrder[Math.floor(Math.random() * rankOrder.length)];
-    const npc = pieceCreators[rank]();
+function spawnNPC() {
+    const npc = pieceCreators['pawn'](); // Start as pawn
     npc.position.set((Math.random() - 0.5) * 80, 0, (Math.random() - 0.5) * 80);
     npc.health = 10;
     npc.velocity = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
     npc.lastShot = 0;
-    npc.fireRate = ranks[rank].fireRate;
-    npc.rank = rank;
+    npc.fireRate = ranks['pawn'].fireRate;
+    npc.rank = 'pawn';
 
     npc.healthBar = createHealthBar();
     npc.add(npc.healthBar.sprite);
@@ -210,6 +207,8 @@ for (let i = 0; i < 10; i++) {
     npcs.push(npc);
     scene.add(npc);
 }
+
+for (let i = 0; i < 10; i++) spawnNPC();
 
 // Projectiles with Explosions
 const projectiles = [];
@@ -283,6 +282,11 @@ player.mesh = createPawn();
 player.mesh.position.set(0, 1.5, 0);
 controls.getObject().position.set(0, 1.5, 0);
 
+// NPC Spawning Timer
+setInterval(() => {
+    if (npcs.length < 20) spawnNPC(); // Cap at 20 to avoid overload
+}, 10000); // Every 10 seconds
+
 // Update Loop
 function animate() {
     requestAnimationFrame(animate);
@@ -320,17 +324,42 @@ function animate() {
     // Projectile Update
     projectiles.forEach((proj, i) => {
         proj.position.add(proj.velocity.clone().multiplyScalar(1 / 60));
-        if (proj.position.length() > 100) {
+        if (proj.position.length() > 100 || proj.position.y < 0) { // Floor contact
+            if (proj.isBazooka) createExplosion(proj.position);
             scene.remove(proj);
             projectiles.splice(i, 1);
             return;
+        }
+        for (const obstacle of obstacles) {
+            if (obstacle.box.containsPoint(proj.position) && proj.isBazooka) {
+                createExplosion(proj.position);
+                scene.remove(proj);
+                projectiles.splice(i, 1);
+                break;
+            }
         }
         if (proj.isEnemy) {
             if (proj.position.distanceTo(camera.position) < 1) {
                 player.health -= proj.damage;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
-                if (player.health <= 0) console.log("Player dead");
+                if (player.health <= 0) {
+                    const currentIndex = rankOrder.indexOf(player.rank);
+                    if (currentIndex > 0) {
+                        player.rank = rankOrder[currentIndex - 1];
+                        player.fireRate = ranks[player.rank].fireRate;
+                        player.projectile = ranks[player.rank].projectile;
+                        scene.remove(player.mesh);
+                        player.mesh = pieceCreators[player.rank]();
+                        player.mesh.position.copy(controls.getObject().position);
+                        player.mesh.position.y = 0;
+                        scene.add(player.mesh);
+                        player.health = 10;
+                    } else {
+                        console.log("Game Over");
+                        player.health = 10; // Reset for now
+                    }
+                }
             }
             npcs.forEach((npc, j) => {
                 if (proj.position.distanceTo(npc.position) < 1 && npc !== proj.shooter) {
@@ -382,7 +411,7 @@ function animate() {
         }
         const target = Math.random() < 0.5 && npcs.length > 1 ? npcs[Math.floor(Math.random() * npcs.length)] : { position: camera.position };
         if (target !== npc) shoot(npc, target);
-        npc.healthBar.sprite.position.set(0, 2, 0); // Fixed position relative to NPC
+        npc.healthBar.sprite.position.set(0, 2, 0);
     });
 
     // Update UI
