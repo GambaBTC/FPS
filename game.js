@@ -122,8 +122,26 @@ scene.add(ground);
 
 scene.background = new THREE.Color(0x87ceeb);
 
+// Fence
+const fenceHeight = 5;
+const fenceThickness = 1;
+const fenceMaterial = new THREE.MeshPhongMaterial({ color: 0x666666 });
+const fence = [
+    new THREE.Mesh(new THREE.BoxGeometry(100 + fenceThickness * 2, fenceHeight, fenceThickness), fenceMaterial), // North
+    new THREE.Mesh(new THREE.BoxGeometry(100 + fenceThickness * 2, fenceHeight, fenceThickness), fenceMaterial), // South
+    new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial), // West
+    new THREE.Mesh(new THREE.BoxGeometry(fenceThickness, fenceHeight, 100), fenceMaterial)  // East
+];
+fence[0].position.set(0, fenceHeight / 2, -50); // North
+fence[1].position.set(0, fenceHeight / 2, 50);  // South
+fence[2].position.set(-50, fenceHeight / 2, 0); // West
+fence[3].position.set(50, fenceHeight / 2, 0);  // East
+fence.forEach(f => {
+    obstacles.push({ mesh: f, box: new THREE.Box3().setFromObject(f) });
+    scene.add(f);
+});
+
 // Obstacles with Collision Boxes
-const obstacles = [];
 for (let i = 0; i < 10; i++) {
     const type = Math.floor(Math.random() * 3);
     let obstacle, boundingBox, heightOffset = 1;
@@ -179,11 +197,10 @@ for (let i = 0; i < 10; i++) {
     npc.health = 10;
     npc.velocity = new THREE.Vector3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
     npc.lastShot = 0;
-    npc.fireRate = 1;
+    npc.fireRate = ranks[rank].fireRate; // Use rank-specific fire rate
+    npc.rank = rank;
 
-    // Add Health Bar
     npc.healthBar = createHealthBar();
-    npc.healthBar.sprite.position.set(0, 2, 0); // Above NPC
     npc.add(npc.healthBar.sprite);
     updateHealthBar(npc);
 
@@ -191,24 +208,29 @@ for (let i = 0; i < 10; i++) {
     scene.add(npc);
 }
 
-// Projectiles (Player and Enemy) with Explosions
+// Projectiles with Explosions
 const projectiles = [];
-function shoot(shooter, isEnemy = false) {
+function shoot(shooter, target) {
     const now = performance.now() / 1000;
     if (now - shooter.lastShot < 1 / shooter.fireRate) return;
     shooter.lastShot = now;
 
-    const projectileGeo = new THREE.SphereGeometry(isEnemy ? 0.2 : (shooter.projectile === 'bazooka' ? 0.5 : 0.1));
-    const projectileMat = new THREE.MeshPhongMaterial({ color: isEnemy ? 0xff0000 : (shooter.projectile === 'bazooka' ? 0x00ff00 : 0xffff00) });
+    const projectileGeo = new THREE.SphereGeometry(shooter.rank && ranks[shooter.rank].projectile === 'bazooka' ? 0.5 : 0.2);
+    const projectileMat = new THREE.MeshPhongMaterial({ color: shooter === player ? (ranks[shooter.rank].projectile === 'bazooka' ? 0x00ff00 : 0xffff00) : 0xff0000 });
     const projectile = new THREE.Mesh(projectileGeo, projectileMat);
     
-    projectile.position.copy(isEnemy ? shooter.position.clone().add(new THREE.Vector3(0, 1, 0)) : camera.position);
-    const direction = isEnemy ? camera.position.clone().sub(shooter.position).normalize() : new THREE.Vector3();
-    if (!isEnemy) camera.getWorldDirection(direction);
+    projectile.position.copy(shooter === player ? camera.position : shooter.position.clone().add(new THREE.Vector3(0, 1, 0)));
+    const direction = target.position.clone().sub(projectile.position).normalize();
+    // Add inaccuracy for NPCs
+    if (shooter !== player) {
+        direction.x += (Math.random() - 0.5) * 0.2; // ±10% inaccuracy
+        direction.z += (Math.random() - 0.5) * 0.2;
+        direction.normalize();
+    }
     projectile.velocity = direction.multiplyScalar(50);
-    projectile.damage = isEnemy ? 2 : (shooter.rank === 'king' ? 10 : shooter.damage());
-    projectile.isEnemy = isEnemy;
-    projectile.isBazooka = !isEnemy && shooter.projectile === 'bazooka';
+    projectile.damage = shooter === player ? (shooter.rank === 'king' ? 10 : shooter.damage()) : 2;
+    projectile.isEnemy = shooter !== player;
+    projectile.isBazooka = shooter === player && ranks[shooter.rank].projectile === 'bazooka';
     projectiles.push(projectile);
     scene.add(projectile);
 }
@@ -231,9 +253,8 @@ function createExplosion(position) {
     }, 50);
 }
 
-// Movement
+// Movement (Camera-Relative)
 const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 const speed = 10;
 
@@ -243,7 +264,7 @@ document.addEventListener('keydown', (event) => {
         case 'KeyS': moveBackward = true; break;
         case 'KeyA': moveLeft = true; break;
         case 'KeyD': moveRight = true; break;
-        case 'Space': shoot(player); break;
+        case 'Space': shoot(player, { position: camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10)) }); break;
     }
 });
 document.addEventListener('keyup', (event) => {
@@ -264,12 +285,18 @@ controls.getObject().position.set(0, 1.5, 0);
 function animate() {
     requestAnimationFrame(animate);
 
-    // Player Movement
-    direction.z = Number(moveBackward) - Number(moveForward);
-    direction.x = Number(moveRight) - Number(moveLeft);
-    direction.normalize();
-    velocity.x = direction.x * speed;
-    velocity.z = direction.z * speed;
+    // Camera-Relative Movement
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+    velocity.set(0, 0, 0);
+    if (moveForward) velocity.add(forward.multiplyScalar(speed));
+    if (moveBackward) velocity.sub(forward.multiplyScalar(speed));
+    if (moveRight) velocity.add(right.multiplyScalar(speed));
+    if (moveLeft) velocity.sub(right.multiplyScalar(speed));
 
     const newPosition = controls.getObject().position.clone().add(velocity.clone().multiplyScalar(1 / 60));
     const playerBox = new THREE.Box3().setFromCenterAndSize(newPosition, new THREE.Vector3(1, 1, 1));
@@ -303,6 +330,18 @@ function animate() {
                 projectiles.splice(i, 1);
                 if (player.health <= 0) console.log("Player dead");
             }
+            npcs.forEach((npc, j) => {
+                if (proj.position.distanceTo(npc.position) < 1 && npc !== proj.shooter) {
+                    npc.health -= proj.damage;
+                    updateHealthBar(npc);
+                    scene.remove(proj);
+                    projectiles.splice(i, 1);
+                    if (npc.health <= 0) {
+                        scene.remove(npc);
+                        npcs.splice(j, 1);
+                    }
+                }
+            });
         } else {
             npcs.forEach((npc, j) => {
                 if (proj.position.distanceTo(npc.position) < 1) {
@@ -310,7 +349,7 @@ function animate() {
                         createExplosion(proj.position);
                         npcs.forEach((nearbyNpc, k) => {
                             if (nearbyNpc !== npc && proj.position.distanceTo(nearbyNpc.position) < 5) {
-                                nearbyNpc.health -= proj.damage / 2; // Splash damage
+                                nearbyNpc.health -= proj.damage / 2;
                                 updateHealthBar(nearbyNpc);
                                 if (nearbyNpc.health <= 0) {
                                     scene.remove(nearbyNpc);
@@ -339,8 +378,9 @@ function animate() {
         if (Math.abs(npc.position.x) > 45 || Math.abs(npc.position.z) > 45) {
             npc.velocity.multiplyScalar(-1);
         }
-        shoot(npc, true);
-        npc.healthBar.sprite.position.copy(npc.position.clone().add(new THREE.Vector3(0, 2, 0))); // Update health bar position
+        const target = Math.random() < 0.5 && npcs.length > 1 ? npcs[Math.floor(Math.random() * npcs.length)] : { position: camera.position };
+        if (target !== npc) shoot(npc, target);
+        npc.healthBar.sprite.position.set(0, 2, 0); // Keep health bar relative to NPC
     });
 
     // Update UI
