@@ -8,10 +8,10 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-scene.add(new THREE.AmbientLight(0x404040));
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-directionalLight.position.set(1, 1, 1);
+// Enhanced Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.5)); // Brighter ambient light
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1); // Stronger directional light
+directionalLight.position.set(5, 10, 5).normalize();
 scene.add(directionalLight);
 
 // Pointer Lock Controls
@@ -33,14 +33,14 @@ let player = {
 const ranks = {
     'pawn': { fireRate: 1, projectile: 'bullet' },
     'knight': { fireRate: 2, projectile: 'bullet' },
-    'bishop': { fireRate: 0.2, projectile: 'bazooka' }, // 1 per 5s
-    'rook': { fireRate: 4, projectile: 'bullet' },     // 1 per 0.25s
+    'bishop': { fireRate: 0.2, projectile: 'bazooka' },
+    'rook': { fireRate: 4, projectile: 'bullet' },
     'queen': { fireRate: 1, projectile: 'bazooka' },
-    'king': { fireRate: 0.1, projectile: 'bullet' }    // 1 per 10s, high damage
+    'king': { fireRate: 0.1, projectile: 'bullet' }
 };
 const rankOrder = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'];
 
-// Chess Piece Creation Functions
+// Chess Piece Creation Functions (unchanged)
 function createPawn() {
     const group = new THREE.Group();
     const base = new THREE.Mesh(
@@ -153,11 +153,15 @@ const pieceCreators = {
 
 // World Setup
 const textureLoader = new THREE.TextureLoader();
-const checkerboard = textureLoader.load('https://threejs.org/examples/textures/checkerboard.png');
+const checkerboard = textureLoader.load('https://threejs.org/examples/textures/checkerboard.png', 
+    () => console.log('Texture loaded'), 
+    undefined, 
+    () => console.error('Texture failed to load')
+);
 checkerboard.repeat.set(10, 10);
 checkerboard.wrapS = checkerboard.wrapT = THREE.RepeatWrapping;
 const groundGeo = new THREE.PlaneGeometry(100, 100);
-const groundMat = new THREE.MeshPhongMaterial({ map: checkerboard });
+const groundMat = new THREE.MeshPhongMaterial({ map: checkerboard, color: 0xaaaaaa }); // Fallback color
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
@@ -225,7 +229,7 @@ function shoot() {
     scene.add(projectile);
 }
 
-// Movement
+// Movement (Fixed WASD)
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -251,15 +255,15 @@ document.addEventListener('keyup', (event) => {
 
 // Initialize Player
 player.mesh = createPawn();
-player.mesh.position.y = 1.5; // Offset for camera height
+player.mesh.position.y = 1.5;
 controls.getObject().position.y = 1.5;
 
 // Update Loop
 function animate() {
     requestAnimationFrame(animate);
 
-    // Player Movement
-    direction.z = Number(moveForward) - Number(moveBackward);
+    // Player Movement (Fixed Direction)
+    direction.z = Number(moveBackward) - Number(moveForward); // Inverted for correct forward/back
     direction.x = Number(moveRight) - Number(moveLeft);
     direction.normalize();
     velocity.x = direction.x * speed;
