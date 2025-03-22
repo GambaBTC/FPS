@@ -4,13 +4,13 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 // Scene Setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.6)); // Bright ambient light
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+scene.add(new THREE.AmbientLight(0xffffff, 0.4)); // Reduced intensity
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Reduced intensity
 directionalLight.position.set(5, 10, 5).normalize();
 scene.add(directionalLight);
 
@@ -157,13 +157,11 @@ const groundGeo = new THREE.PlaneGeometry(100, 100);
 const groundMat = new THREE.MeshPhongMaterial({ color: 0x00ff00 }); // Green floor
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
+ground.position.y = 0;
 scene.add(ground);
 
-// Blue Sky (Skybox)
-const skyGeo = new THREE.SphereGeometry(500, 32, 32);
-const skyMat = new THREE.MeshBasicMaterial({ color: 0x0000ff, side: THREE.BackSide }); // Blue sky
-const sky = new THREE.Mesh(skyGeo, skyMat);
-scene.add(sky);
+// Blue Sky (Background)
+scene.background = new THREE.Color(0x0000ff); // Simple blue background instead of skybox
 
 // Obstacles with Collision Boxes
 const obstacles = [];
@@ -215,7 +213,7 @@ for (let i = 0; i < 5; i++) {
     );
     npc.health = 10;
     npc.velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 2, // Faster movement
+        (Math.random() - 0.5) * 2,
         0,
         (Math.random() - 0.5) * 2
     );
@@ -243,7 +241,7 @@ function shoot() {
     scene.add(projectile);
 }
 
-// Movement with Fixed A/D and Collision
+// Movement with Collision
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -269,8 +267,8 @@ document.addEventListener('keyup', (event) => {
 
 // Initialize Player
 player.mesh = createPawn();
-player.mesh.position.y = 1.5;
-controls.getObject().position.y = 1.5;
+player.mesh.position.set(0, 1.5, 0); // Start at center
+controls.getObject().position.set(0, 1.5, 0); // Camera at player height
 
 // Update Loop
 function animate() {
@@ -278,7 +276,7 @@ function animate() {
 
     // Player Movement with Collision
     direction.z = Number(moveBackward) - Number(moveForward); // W forward, S backward
-    direction.x = Number(moveLeft) - Number(moveRight); // A left, D right (fixed)
+    direction.x = Number(moveLeft) - Number(moveRight); // A left, D right
     direction.normalize();
     velocity.x = direction.x * speed;
     velocity.z = direction.z * speed;
@@ -288,7 +286,7 @@ function animate() {
 
     let collision = false;
     for (const obstacle of obstacles) {
-        obstacle.box.setFromObject(obstacle.mesh); // Update bounding box
+        obstacle.box.setFromObject(obstacle.mesh);
         if (playerBox.intersectsBox(obstacle.box)) {
             collision = true;
             break;
@@ -325,7 +323,6 @@ function animate() {
     // NPC Movement
     npcs.forEach(npc => {
         npc.position.add(npc.velocity.clone().multiplyScalar(1 / 60));
-        // Bounce off map edges
         if (Math.abs(npc.position.x) > 45 || Math.abs(npc.position.z) > 45) {
             npc.velocity.multiplyScalar(-1);
         }
