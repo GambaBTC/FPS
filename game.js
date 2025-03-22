@@ -8,9 +8,9 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Enhanced Lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.5)); // Brighter ambient light
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1); // Stronger directional light
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.6)); // Bright ambient light
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 directionalLight.position.set(5, 10, 5).normalize();
 scene.add(directionalLight);
 
@@ -40,7 +40,7 @@ const ranks = {
 };
 const rankOrder = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'];
 
-// Chess Piece Creation Functions (unchanged)
+// Chess Piece Creation Functions
 function createPawn() {
     const group = new THREE.Group();
     const base = new THREE.Mesh(
@@ -152,49 +152,58 @@ const pieceCreators = {
 };
 
 // World Setup
-const textureLoader = new THREE.TextureLoader();
-const checkerboard = textureLoader.load('https://threejs.org/examples/textures/checkerboard.png', 
-    () => console.log('Texture loaded'), 
-    undefined, 
-    () => console.error('Texture failed to load')
-);
-checkerboard.repeat.set(10, 10);
-checkerboard.wrapS = checkerboard.wrapT = THREE.RepeatWrapping;
+// Green Floor
 const groundGeo = new THREE.PlaneGeometry(100, 100);
-const groundMat = new THREE.MeshPhongMaterial({ map: checkerboard, color: 0xaaaaaa }); // Fallback color
+const groundMat = new THREE.MeshPhongMaterial({ color: 0x00ff00 }); // Green floor
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-// Obstacles
+// Blue Sky (Skybox)
+const skyGeo = new THREE.SphereGeometry(500, 32, 32);
+const skyMat = new THREE.MeshBasicMaterial({ color: 0x0000ff, side: THREE.BackSide }); // Blue sky
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
+
+// Obstacles with Collision Boxes
+const obstacles = [];
 for (let i = 0; i < 10; i++) {
     const type = Math.floor(Math.random() * 3);
     let obstacle;
+    let boundingBox;
     if (type === 0) {
+        const size = 2 + Math.random() * 2;
         obstacle = new THREE.Mesh(
-            new THREE.BoxGeometry(2 + Math.random() * 2, 2 + Math.random() * 2, 2 + Math.random() * 2),
+            new THREE.BoxGeometry(size, size, size),
             new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
         );
+        boundingBox = new THREE.Box3().setFromObject(obstacle);
     } else if (type === 1) {
+        const radius = 1 + Math.random();
+        const height = 2 + Math.random() * 2;
         obstacle = new THREE.Mesh(
-            new THREE.CylinderGeometry(1 + Math.random(), 1 + Math.random(), 2 + Math.random() * 2, 32),
+            new THREE.CylinderGeometry(radius, radius, height, 32),
             new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
         );
+        boundingBox = new THREE.Box3().setFromObject(obstacle);
     } else {
+        const radius = 1 + Math.random();
         obstacle = new THREE.Mesh(
-            new THREE.SphereGeometry(1 + Math.random(), 32, 32),
+            new THREE.SphereGeometry(radius, 32, 32),
             new THREE.MeshPhongMaterial({ color: Math.random() * 0xffffff })
         );
+        boundingBox = new THREE.Box3().setFromObject(obstacle);
     }
     obstacle.position.set(
         (Math.random() - 0.5) * 90,
-        obstacle.geometry.parameters.height ? obstacle.geometry.parameters.height / 2 : 1,
+        obstacle.geometry.parameters.height ? obstacle.geometry.parameters.height / 2 : radius || 1,
         (Math.random() - 0.5) * 90
     );
+    obstacles.push({ mesh: obstacle, box: boundingBox });
     scene.add(obstacle);
 }
 
-// NPCs
+// NPCs with Visible Movement
 const npcs = [];
 for (let i = 0; i < 5; i++) {
     const rank = rankOrder[Math.floor(Math.random() * rankOrder.length)];
@@ -205,6 +214,11 @@ for (let i = 0; i < 5; i++) {
         (Math.random() - 0.5) * 80
     );
     npc.health = 10;
+    npc.velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 2, // Faster movement
+        0,
+        (Math.random() - 0.5) * 2
+    );
     npcs.push(npc);
     scene.add(npc);
 }
@@ -229,7 +243,7 @@ function shoot() {
     scene.add(projectile);
 }
 
-// Movement (Fixed WASD)
+// Movement with Fixed A/D and Collision
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
@@ -262,13 +276,28 @@ controls.getObject().position.y = 1.5;
 function animate() {
     requestAnimationFrame(animate);
 
-    // Player Movement (Fixed Direction)
-    direction.z = Number(moveBackward) - Number(moveForward); // Inverted for correct forward/back
-    direction.x = Number(moveRight) - Number(moveLeft);
+    // Player Movement with Collision
+    direction.z = Number(moveBackward) - Number(moveForward); // W forward, S backward
+    direction.x = Number(moveLeft) - Number(moveRight); // A left, D right (fixed)
     direction.normalize();
     velocity.x = direction.x * speed;
     velocity.z = direction.z * speed;
-    controls.getObject().position.add(velocity.clone().multiplyScalar(1 / 60));
+
+    const newPosition = controls.getObject().position.clone().add(velocity.clone().multiplyScalar(1 / 60));
+    const playerBox = new THREE.Box3().setFromCenterAndSize(newPosition, new THREE.Vector3(1, 1, 1));
+
+    let collision = false;
+    for (const obstacle of obstacles) {
+        obstacle.box.setFromObject(obstacle.mesh); // Update bounding box
+        if (playerBox.intersectsBox(obstacle.box)) {
+            collision = true;
+            break;
+        }
+    }
+
+    if (!collision) {
+        controls.getObject().position.copy(newPosition);
+    }
     controls.getObject().position.y = 1.5;
 
     // Projectile Update
@@ -295,8 +324,11 @@ function animate() {
 
     // NPC Movement
     npcs.forEach(npc => {
-        npc.position.x += (Math.random() - 0.5) * 0.1;
-        npc.position.z += (Math.random() - 0.5) * 0.1;
+        npc.position.add(npc.velocity.clone().multiplyScalar(1 / 60));
+        // Bounce off map edges
+        if (Math.abs(npc.position.x) > 45 || Math.abs(npc.position.z) > 45) {
+            npc.velocity.multiplyScalar(-1);
+        }
     });
 
     // Update UI
